@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Trash2, Eye, X } from "lucide-react";
-import { WEBHOOKS } from "@/config/webhooks";
+import { WEBHOOKS, WEBHOOK_TAGS } from "@/config/webhooks";
+import { getErrorMessage } from "@/utils/errorMessages";
 import { toast } from "sonner";
 import { WorkoutResult } from "./WorkoutResult";
 
@@ -32,16 +33,21 @@ export const WorkoutHistory = ({ userEmail, onClose }: WorkoutHistoryProps) => {
       const response = await fetch(WEBHOOKS.GET_WORKOUTS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userEmail }),
+        body: JSON.stringify({ 
+          tag: WEBHOOK_TAGS.GET_WORKOUTS,
+          email: userEmail 
+        }),
       });
 
       if (response.ok) {
         const data = await response.json();
         setWorkouts(data.workouts || []);
       } else {
-        toast.error("Erro ao carregar histórico de treinos");
+        const errorMsg = getErrorMessage(response.status);
+        toast.error(errorMsg);
       }
     } catch (error) {
+      console.error("Erro ao carregar treinos:", error);
       toast.error("Erro de conexão ao carregar treinos");
     } finally {
       setIsLoading(false);
@@ -53,16 +59,22 @@ export const WorkoutHistory = ({ userEmail, onClose }: WorkoutHistoryProps) => {
       const response = await fetch(WEBHOOKS.DELETE_WORKOUT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userEmail, workoutId }),
+        body: JSON.stringify({ 
+          tag: WEBHOOK_TAGS.DELETE_WORKOUT,
+          email: userEmail, 
+          workoutId 
+        }),
       });
 
       if (response.ok) {
         toast.success("Treino deletado com sucesso!");
         setWorkouts(workouts.filter((w) => w.id !== workoutId));
       } else {
-        toast.error("Erro ao deletar treino");
+        const errorMsg = getErrorMessage(response.status);
+        toast.error(errorMsg);
       }
     } catch (error) {
+      console.error("Erro ao deletar treino:", error);
       toast.error("Erro de conexão ao deletar treino");
     }
   };

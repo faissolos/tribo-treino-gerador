@@ -14,8 +14,9 @@ import { WorkoutResult } from "./WorkoutResult";
 import { Header } from "./Header";
 import { WorkoutHistory } from "./WorkoutHistory";
 import { workoutSchema } from "@/schemas/workout.schema";
-import { WEBHOOKS } from "@/config/webhooks";
+import { WEBHOOKS, WEBHOOK_TAGS } from "@/config/webhooks";
 import { getErrorMessage } from "@/utils/errorMessages";
+import { WORKOUT_GENERATION_PROMPT, WORKOUT_VALIDATION_ERROR } from "@/utils/aiPrompts";
 import { toast } from "sonner";
 
 interface WorkoutData {
@@ -84,10 +85,21 @@ export const WorkoutGenerator = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s para geração
 
+      // Gera o prompt completo para a IA
+      const prompt = WORKOUT_GENERATION_PROMPT({
+        foco,
+        equipamento,
+        sexo,
+        tempo,
+        limitacoes,
+      });
+
       const response = await fetch(WEBHOOKS.GENERATE_WORKOUT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          tag: WEBHOOK_TAGS.GENERATE_WORKOUT,
+          prompt,
           foco,
           equipamento,
           sexo,
@@ -106,12 +118,21 @@ export const WorkoutGenerator = () => {
       }
 
       const data = await response.json();
+      
+      // Valida se o JSON retornado tem a estrutura esperada
+      if (!data.introducao || !data.aquecimento || !data.treino_principal || !data.desaquecimento) {
+        console.error("Resposta da IA em formato inválido:", data);
+        toast.error(WORKOUT_VALIDATION_ERROR.message);
+        return;
+      }
+
       setWorkoutResult(data);
       toast.success("Treino gerado com sucesso! ✨");
     } catch (err: any) {
       if (err.name === "AbortError") {
         toast.error("A geração está demorando muito. Tente novamente.");
       } else {
+        console.error("Erro ao gerar treino:", err);
         toast.error("Erro ao gerar treino. Tente novamente.");
       }
     } finally {
@@ -127,6 +148,7 @@ export const WorkoutGenerator = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          tag: WEBHOOK_TAGS.SAVE_WORKOUT,
           email: userEmail,
           workout: workoutResult,
           foco,
@@ -137,9 +159,11 @@ export const WorkoutGenerator = () => {
       if (response.ok) {
         toast.success("Treino salvo com sucesso! 🎉");
       } else {
-        toast.error("Erro ao salvar treino. Tente novamente.");
+        const errorMsg = getErrorMessage(response.status);
+        toast.error(errorMsg);
       }
     } catch (err) {
+      console.error("Erro ao salvar treino:", err);
       toast.error("Erro de conexão ao salvar treino.");
     }
   };

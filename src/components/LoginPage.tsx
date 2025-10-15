@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import triboLogo from "@/assets/tribo-logo.png";
 import { loginSchema } from "@/schemas/login.schema";
-import { WEBHOOKS, DEV_MODE, DEV_CREDENTIALS } from "@/config/webhooks";
+import { WEBHOOKS, WEBHOOK_TAGS, DEV_MODE, DEV_CREDENTIALS } from "@/config/webhooks";
 import { getErrorMessage } from "@/utils/errorMessages";
 import { toast } from "sonner";
 
@@ -48,7 +48,11 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
       const response = await fetch(WEBHOOKS.LOGIN, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ 
+          tag: WEBHOOK_TAGS.LOGIN,
+          email, 
+          password 
+        }),
         signal: controller.signal,
       });
 
