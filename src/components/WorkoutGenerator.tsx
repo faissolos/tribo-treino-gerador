@@ -11,6 +11,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { WorkoutResult } from "./WorkoutResult";
+import { Header } from "./Header";
+import { WorkoutHistory } from "./WorkoutHistory";
+import { workoutSchema } from "@/schemas/workout.schema";
+import { WEBHOOKS } from "@/config/webhooks";
+import { getErrorMessage } from "@/utils/errorMessages";
+import { toast } from "sonner";
 
 interface WorkoutData {
   introducao: {
@@ -44,19 +50,43 @@ export const WorkoutGenerator = () => {
   const [limitacoes, setLimitacoes] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [workoutResult, setWorkoutResult] = useState<WorkoutData | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const userEmail = localStorage.getItem("tribo_user_email") || "";
+
+  const handleLogout = () => {
+    localStorage.removeItem("tribo_logged_in");
+    localStorage.removeItem("tribo_user_email");
+    window.location.reload();
+  };
 
   const handleGenerateWorkout = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validação com Zod
+    const validation = workoutSchema.safeParse({
+      foco,
+      equipamento,
+      sexo,
+      tempo,
+      limitacoes,
+    });
+
+    if (!validation.success) {
+      const firstError = validation.error.errors[0].message;
+      toast.error(firstError);
+      return;
+    }
+
     setIsGenerating(true);
     setWorkoutResult(null);
 
     try {
-      const response = await fetch("/webhook-treino", {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s para geração
+
+      const response = await fetch(WEBHOOKS.GENERATE_WORKOUT, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           foco,
           equipamento,
@@ -64,12 +94,26 @@ export const WorkoutGenerator = () => {
           tempo,
           limitacoes,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorMsg = getErrorMessage(response.status);
+        toast.error(errorMsg);
+        return;
+      }
 
       const data = await response.json();
       setWorkoutResult(data);
-    } catch (err) {
-      console.error("Error generating workout:", err);
+      toast.success("Treino gerado com sucesso! ✨");
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        toast.error("A geração está demorando muito. Tente novamente.");
+      } else {
+        toast.error("Erro ao gerar treino. Tente novamente.");
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -79,20 +123,24 @@ export const WorkoutGenerator = () => {
     if (!workoutResult) return;
 
     try {
-      await fetch("/webhook-save-workout", {
+      const response = await fetch(WEBHOOKS.SAVE_WORKOUT, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: userEmail,
           workout: workoutResult,
+          foco,
+          date: new Date().toISOString(),
         }),
       });
-      alert("Treino salvo com sucesso!");
+
+      if (response.ok) {
+        toast.success("Treino salvo com sucesso! 🎉");
+      } else {
+        toast.error("Erro ao salvar treino. Tente novamente.");
+      }
     } catch (err) {
-      console.error("Error saving workout:", err);
-      alert("Erro ao salvar treino. Tente novamente.");
+      toast.error("Erro de conexão ao salvar treino.");
     }
   };
 
@@ -105,9 +153,31 @@ export const WorkoutGenerator = () => {
     setLimitacoes("");
   };
 
+  if (showHistory) {
+    return (
+      <>
+        <Header
+          userEmail={userEmail}
+          onLogout={handleLogout}
+          onViewHistory={() => setShowHistory(false)}
+        />
+        <WorkoutHistory
+          userEmail={userEmail}
+          onClose={() => setShowHistory(false)}
+        />
+      </>
+    );
+  }
+
   return (
-    <div className="min-h-screen py-12 px-4">
-      <div className="max-w-4xl mx-auto space-y-8">
+    <>
+      <Header
+        userEmail={userEmail}
+        onLogout={handleLogout}
+        onViewHistory={() => setShowHistory(true)}
+      />
+      <div className="min-h-screen py-12 px-4">
+        <div className="max-w-4xl mx-auto space-y-8">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-heading text-foreground">
             Gerador de Treino com Método V.I.D.A.
@@ -224,7 +294,8 @@ export const WorkoutGenerator = () => {
             </div>
           )}
         </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
